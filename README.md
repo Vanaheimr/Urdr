@@ -51,6 +51,25 @@ mit OpenSSL angesehen werden:
 openssl ts -reply -in README.tsr -text
 ```
 
+## ToDo's
+
+- Test-Vektoren
+- Zertifikatskette statt nur Self-Signed-Cert
+
+### Negativtests
+
+- falsche Nonce
+- falscher MessageImprint
+- falsche Policy
+- Token mit falschem Signer-Zertifikat
+- Zertifikat ohne Time-Stamping-EKU
+- abgelaufenes Zertifikat
+- malformed ASN.1
+- zu großer HTTP-Body
+- falscher Content-Type
+
+
+
 
 ## Interop-Test mit OpenSSL
 

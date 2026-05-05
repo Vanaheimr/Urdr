@@ -17,10 +17,13 @@
 
 #region Usings
 
+using System.Buffers;
 using System.Net.Http.Headers;
-
+using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
+
+using org.GraphDefined.Vanaheimr.Urdr.Asn1;
 
 #endregion
 
@@ -102,14 +105,51 @@ namespace org.GraphDefined.Vanaheimr.Urdr
             string filePath,
             AlgorithmIdentifier? hashAlgorithm = null,
             string? policy = null,
+            int bufferSize = 64 * 1024,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrEmpty(filePath);
 
             hashAlgorithm ??= AlgorithmIdentifier.Sha256;
 
-            byte[] data = await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
-            return await GetTimestamp(data, hashAlgorithm, policy, cancellationToken).ConfigureAwait(false);
+            await using var stream = new FileStream(
+                filePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+            return await GetStreamTimestamp(stream, hashAlgorithm, policy, bufferSize, cancellationToken)
+                             .ConfigureAwait(false);
+        }
+
+
+        /// <summary>
+        /// Fordert einen Zeitstempel für einen Stream an, ohne den vollständigen Inhalt in den RAM zu laden.
+        /// </summary>
+        public async Task<TimeStampResult> GetStreamTimestamp(
+            Stream data,
+            AlgorithmIdentifier? hashAlgorithm = null,
+            string? policy = null,
+            int bufferSize = 64 * 1024,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(data);
+            if (bufferSize <= 0)
+                throw new ArgumentOutOfRangeException(nameof(bufferSize));
+
+            hashAlgorithm ??= AlgorithmIdentifier.Sha256;
+
+            var digest  = await ComputeHash(data, hashAlgorithm, bufferSize, cancellationToken)
+                                .ConfigureAwait(false);
+            var request = new TimeStampRequest(
+                              new MessageImprint(hashAlgorithm, digest),
+                              policy,
+                              TimeStampRequest.NewNonce(),
+                              certReq: true);
+
+            return await SendAndVerify(request, cancellationToken).ConfigureAwait(false);
         }
 
 
@@ -173,6 +213,45 @@ namespace org.GraphDefined.Vanaheimr.Urdr
                 throw new InvalidDataException("TimeStampResponse passt nicht zur angefragten Policy.");
 
         }
+
+
+        private static async Task<Byte[]> ComputeHash(
+            Stream data,
+            AlgorithmIdentifier hashAlgorithm,
+            Int32 bufferSize,
+            CancellationToken cancellationToken)
+        {
+            using var hash = IncrementalHash.CreateHash(GetHashAlgorithmName(hashAlgorithm));
+            var buffer = ArrayPool<Byte>.Shared.Rent(bufferSize);
+
+            try
+            {
+                while (true)
+                {
+                    var read = await data.ReadAsync(buffer.AsMemory(0, bufferSize), cancellationToken)
+                                         .ConfigureAwait(false);
+
+                    if (read == 0)
+                        return hash.GetHashAndReset();
+
+                    hash.AppendData(buffer, 0, read);
+                }
+            }
+            finally
+            {
+                ArrayPool<Byte>.Shared.Return(buffer);
+            }
+        }
+
+
+        private static HashAlgorithmName GetHashAlgorithmName(AlgorithmIdentifier hashAlgorithm)
+
+            => hashAlgorithm.Algorithm switch {
+                   OIDMap.Sha256  => HashAlgorithmName.SHA256,
+                   OIDMap.Sha384  => HashAlgorithmName.SHA384,
+                   OIDMap.Sha512  => HashAlgorithmName.SHA512,
+                   _              => throw new NotSupportedException($"Hash algorithm {hashAlgorithm.Algorithm} is not supported!")
+               };
 
 
         public void Dispose()

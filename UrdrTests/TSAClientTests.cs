@@ -18,8 +18,11 @@
 #region Usings
 
 using System.Net;
+using System.Security.Cryptography;
 
 using NUnit.Framework;
+
+using org.GraphDefined.Vanaheimr.Urdr.Asn1;
 
 #endregion
 
@@ -43,6 +46,34 @@ public sealed class TSAClientTests
             Throws.InstanceOf<InvalidDataException>());
     }
 
+
+    [Test]
+    public async Task GetStreamTimestamp_HashesStreamWithSmallBuffer()
+    {
+        using var cert = TestCertificate.CreateRsa();
+        var tsa = new TimeStampAuthority(cert.Info, cert.PrivateKey);
+        var payload = Enumerable.Range(0, 128 * 1024 + 333)
+            .Select(i => (Byte)((i * 29 + 13) & 0xFF))
+            .ToArray();
+
+        await using var stream = new ChunkedReadStream(payload, maxChunkSize: 17);
+        using var httpClient = new HttpClient(new TimestampingHandler(tsa));
+        using var client = new TSAClient(httpClient, "https://tsa.example.test/", cert.Certificate);
+
+        var result = await client.GetStreamTimestamp(
+            stream,
+            AlgorithmIdentifier.Sha256,
+            bufferSize: 31);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.TstInfo.MessageImprint.HashAlgorithm.Algorithm, Is.EqualTo(OIDMap.Sha256));
+            Assert.That(result.TstInfo.MessageImprint.HashedMessage, Is.EqualTo(SHA256.HashData(payload)));
+            Assert.That(stream.Position, Is.EqualTo(stream.Length));
+        });
+    }
+
+
     private sealed class StaticResponseHandler(byte[] responseBytes) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -56,4 +87,32 @@ public sealed class TSAClientTests
             return Task.FromResult(response);
         }
     }
+
+
+    private sealed class TimestampingHandler(TimeStampAuthority tsa) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var requestBytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+            var responseBytes = tsa.Process(requestBytes);
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(responseBytes)
+            };
+            response.Content.Headers.ContentType = new("application/timestamp-reply");
+
+            return response;
+        }
+    }
+
+
+    private sealed class ChunkedReadStream(Byte[] payload, Int32 maxChunkSize) : MemoryStream(payload)
+    {
+        public override ValueTask<Int32> ReadAsync(Memory<Byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var length = Math.Min(buffer.Length, maxChunkSize);
+            return base.ReadAsync(buffer[..length], cancellationToken);
+        }
+    }
+
 }

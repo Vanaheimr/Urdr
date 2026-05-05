@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="TSAServer/TSAServer.csproj" />
+  <Project Path="Urdr/Urdr.csproj" />
+  <Project Path="TSAClient/TSAClient.csproj" Id="923613ab-407c-48d4-8a17-25c77ec61bb8" />
+  <Project Path="UrdrTests/UrdrTests.csproj" />
+</Solution>

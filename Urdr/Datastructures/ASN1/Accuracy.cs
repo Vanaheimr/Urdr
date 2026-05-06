@@ -30,7 +30,7 @@ namespace org.GraphDefined.Vanaheimr.Urdr.Asn1
     /// It is an optional field that can contain up to three components:
     /// seconds, milliseconds, and microseconds.
     /// 
-    /// The Accuracy field allows a TimeStamp Authority (TSA) to specify the
+    /// The Accuracy field allows a Time Stamp Authority (TSA) to specify the
     /// precision of the time it provides, which can be important for
     /// applications that require high-precision timestamps.
     /// </summary>

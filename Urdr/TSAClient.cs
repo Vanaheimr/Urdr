@@ -30,244 +30,355 @@ using org.GraphDefined.Vanaheimr.Urdr.Asn1;
 namespace org.GraphDefined.Vanaheimr.Urdr
 {
 
-    public sealed class TSAClient : IDisposable
+    /// <summary>
+    /// The TSAClient requests and verifies timestamps from a Time Stamp Authority (TSA)
+    /// using the Time-Stamp Protocol (TSP, RFC 3161).
+    /// </summary>
+    public class TSAClient : IDisposable
     {
 
-        public const String DefaultTsaUrl = "http://localhost:8080/";
+        #region Data
 
-        private readonly HttpClient        _httpClient;
-        private readonly Boolean           _ownsHttpClient;
-        private readonly X509Certificate2  _trustedTsaCertificate;
-        private readonly String            _tsaUrl;
-        private          Boolean           _disposed;
+        private readonly  HttpClient        httpClient;
+        private readonly  Boolean           ownsHTTPClient;
+        private           Boolean           disposed;
 
-        public TSAClient(X509Certificate2 trustedTsaCertificate)
-            : this(DefaultTsaUrl, trustedTsaCertificate)
-        { }
+        public const      String            DefaultHTTPUserAgent  = "Vanaheimr Urdr-Client/1.0";
 
-        public TSAClient(String tsaUrl, X509Certificate2 trustedTsaCertificate)
+        #endregion
+
+        #region Properties
+
+        /// <summary>
+        /// The URL of the Time Stamp Authority service endpoint.
+        /// </summary>
+        public String            RemoteURL                { get; }
+
+        /// <summary>
+        /// The trusted certificate of the Time Stamp Authority for verifying responses.
+        /// </summary>
+        public X509Certificate2  TrustedTSACertificate    { get; }
+
+        /// <summary>
+        /// The HTTP User-Agent to use.
+        /// </summary>
+        public String            HTTPUserAgent            { get; }
+
+        #endregion
+
+        #region Constructor(s)
+
+        /// <summary>
+        /// Create a new Time Stamp Authority client.
+        /// </summary>
+        /// <param name="RemoteURL">The URL of the Time Stamp Authority service endpoint.</param>
+        /// <param name="TrustedTSACertificate">The trusted certificate of the Time Stamp Authority for verifying responses.</param>
+        /// <param name="HTTPUserAgent">An optional HTTP User-Agent.</param>
+        public TSAClient(String            RemoteURL,
+                         X509Certificate2  TrustedTSACertificate,
+                         String            HTTPUserAgent = DefaultHTTPUserAgent)
         {
-            _httpClient = new HttpClient();
-            _ownsHttpClient = true;
-            _tsaUrl = tsaUrl ?? throw new ArgumentNullException(nameof(tsaUrl));
-            _trustedTsaCertificate = trustedTsaCertificate ?? throw new ArgumentNullException(nameof(trustedTsaCertificate));
-            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Urdr-Client/2.0");
+
+            this.RemoteURL              = RemoteURL;
+            this.TrustedTSACertificate  = TrustedTSACertificate;
+            this.HTTPUserAgent          = HTTPUserAgent;
+
+            this.httpClient             = new HttpClient();
+            this.ownsHTTPClient         = true;
+
+            this.httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(this.HTTPUserAgent);
+
         }
-
-        public TSAClient(HttpClient httpClient, String tsaUrl, X509Certificate2 trustedTsaCertificate)
-        {
-            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-            _ownsHttpClient = false;
-            _tsaUrl = tsaUrl ?? throw new ArgumentNullException(nameof(tsaUrl));
-            _trustedTsaCertificate = trustedTsaCertificate ?? throw new ArgumentNullException(nameof(trustedTsaCertificate));
-
-            if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
-            {
-                _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Urdr-Client/2.0");
-            }
-        }
-
-
 
 
         /// <summary>
-        /// Fordert einen Zeitstempel an (Standard: SHA-256).
+        /// Create a new TSAClient with a custom HttpClient.
+        /// The caller is responsible for disposing the HttpClient!
         /// </summary>
-        public async Task<TimeStampResult> GetTimestamp(
-            byte[] data,
-            string? policy = null,
-            CancellationToken cancellationToken = default)
+        /// <param name="HTTPClient">The HttpClient to use for sending requests. The TSAClient will not dispose it.</param>
+        /// <param name="RemoteURL">The URL of the Time Stamp Authority service endpoint.</param>
+        /// <param name="TrustedTSACertificate">The trusted certificate of the Time Stamp Authority for verifying responses.</param>
+        /// <param name="HTTPUserAgent">An optional HTTP User-Agent.</param>
+        public TSAClient(HttpClient        HTTPClient,
+                         String            RemoteURL,
+                         X509Certificate2  TrustedTSACertificate,
+                         String            HTTPUserAgent = DefaultHTTPUserAgent)
         {
-            return await GetTimestamp(data, AlgorithmIdentifier.Sha256, policy, cancellationToken)
-                       .ConfigureAwait(false);
+
+            this.RemoteURL              = RemoteURL;
+            this.TrustedTSACertificate  = TrustedTSACertificate;
+            this.HTTPUserAgent          = HTTPUserAgent;
+
+            this.httpClient             = HTTPClient;
+            this.ownsHTTPClient         = false;
+
+            if (this.httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
+                this.httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(this.HTTPUserAgent);
+
         }
 
-        /// <summary>
-        /// Fordert einen Zeitstempel mit explizitem Hash-Algorithmus an.
-        /// </summary>
-        public async Task<TimeStampResult> GetTimestamp(
-            byte[] data,
-            AlgorithmIdentifier hashAlgorithm,
-            string? policy = null,
-            CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(data);
-            ArgumentNullException.ThrowIfNull(hashAlgorithm);
+        #endregion
 
-            var request = TimeStampRequest.ForData(data, hashAlgorithm, certReq: true, policy: policy);
-            return await SendAndVerify(request, cancellationToken).ConfigureAwait(false);
-        }
+
+        #region GetTimestamp       (Data,   HashAlgorithm = null, Policy = null, ...)
 
         /// <summary>
-        /// Fordert einen Zeitstempel für eine Datei an.
+        /// Timestamp the given data.
         /// </summary>
-        public async Task<TimeStampResult> GetFileTimestamp(
-            string filePath,
-            AlgorithmIdentifier? hashAlgorithm = null,
-            string? policy = null,
-            int bufferSize = 64 * 1024,
-            CancellationToken cancellationToken = default)
-        {
-            ArgumentException.ThrowIfNullOrEmpty(filePath);
+        /// <param name="Data">The data to be timestamped.</param>
+        /// <param name="HashAlgorithm">An optional hash algorithm to use (default: SHA-256).</param>
+        /// <param name="Policy">An optional policy OID to include in the request.</param>
+        /// <param name="CancellationToken">An optional cancellation token.</param>
+        public async Task<TimeStampResult>
 
-            hashAlgorithm ??= AlgorithmIdentifier.Sha256;
+            GetTimestamp(Byte[]                Data,
+                         AlgorithmIdentifier?  HashAlgorithm       = null,
+                         String?               Policy              = null,
+                         CancellationToken     CancellationToken   = default)
+
+                => await SendAndVerify(
+                             TimeStampRequest.ForData(
+                                 Data,
+                                 HashAlgorithm,
+                                 certReq: true,
+                                 policy:  Policy
+                             ),
+                             CancellationToken
+                         ).ConfigureAwait(false);
+
+        #endregion
+
+        #region GetFileTimestamp   (Data,   HashAlgorithm = null, Policy = null, ...)
+
+        /// <summary>
+        /// Get a timestamp for a file, without loading the entire content into RAM.
+        /// </summary>
+        /// <param name="FilePath">The path to the file to be timestamped.</param>
+        /// <param name="HashAlgorithm">An optional hash algorithm to use (default: SHA-256).</param>
+        /// <param name="Policy">An optional policy OID to include in the request.</param>
+        /// <param name="BufferSize">An optional buffer size for reading the file (default: 64 KB).</param>
+        /// <param name="CancellationToken">An optional cancellation token.</param>
+        public async Task<TimeStampResult>
+
+            GetFileTimestamp(String                FilePath,
+                             AlgorithmIdentifier?  HashAlgorithm       = null,
+                             String?               Policy              = null,
+                             UInt32                BufferSize          = 64 * 1024,
+                             CancellationToken     CancellationToken   = default)
+
+        {
+
+            ArgumentException.ThrowIfNullOrEmpty(FilePath);
+
+            HashAlgorithm ??= AlgorithmIdentifier.Sha256;
 
             await using var stream = new FileStream(
-                filePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                bufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
+                                         FilePath,
+                                         FileMode.Open,
+                                         FileAccess.Read,
+                                         FileShare.Read,
+                                         (Int32) BufferSize,
+                                         FileOptions.Asynchronous | FileOptions.SequentialScan
+                                     );
 
-            return await GetStreamTimestamp(stream, hashAlgorithm, policy, bufferSize, cancellationToken)
-                             .ConfigureAwait(false);
+            return await GetStreamTimestamp(
+                             stream,
+                             HashAlgorithm,
+                             Policy,
+                             BufferSize,
+                             CancellationToken
+                         ).ConfigureAwait(false);
+
         }
 
+        #endregion
+
+        #region GetStreamTimestamp (Stream, HashAlgorithm = null, Policy = null, ...)
 
         /// <summary>
         /// Fordert einen Zeitstempel für einen Stream an, ohne den vollständigen Inhalt in den RAM zu laden.
         /// </summary>
-        public async Task<TimeStampResult> GetStreamTimestamp(
-            Stream data,
-            AlgorithmIdentifier? hashAlgorithm = null,
-            string? policy = null,
-            int bufferSize = 64 * 1024,
-            CancellationToken cancellationToken = default)
+        public async Task<TimeStampResult>
+
+            GetStreamTimestamp(Stream                Stream,
+                               AlgorithmIdentifier?  HashAlgorithm       = null,
+                               String?               Policy              = null,
+                               UInt32                BufferSize          = 64 * 1024,
+                               CancellationToken     CancellationToken   = default)
+
         {
-            ArgumentNullException.ThrowIfNull(data);
-            if (bufferSize <= 0)
-                throw new ArgumentOutOfRangeException(nameof(bufferSize));
 
-            hashAlgorithm ??= AlgorithmIdentifier.Sha256;
+            ArgumentOutOfRangeException.ThrowIfLessThan(BufferSize, 1024U);
 
-            var digest  = await ComputeHash(data, hashAlgorithm, bufferSize, cancellationToken)
-                                .ConfigureAwait(false);
-            var request = new TimeStampRequest(
-                              new MessageImprint(hashAlgorithm, digest),
-                              policy,
-                              TimeStampRequest.NewNonce(),
-                              certReq: true);
+            HashAlgorithm ??= AlgorithmIdentifier.Sha256;
 
-            return await SendAndVerify(request, cancellationToken).ConfigureAwait(false);
+            var digest   = await ComputeHash(
+                                     Stream,
+                                     HashAlgorithm,
+                                     (Int32) BufferSize,
+                                     CancellationToken
+                                 ).ConfigureAwait(false);
+
+            var request  = new TimeStampRequest(
+                               new MessageImprint(
+                                   HashAlgorithm,
+                                   digest
+                               ),
+                               Policy,
+                               TimeStampRequest.NewNonce(),
+                               certReq: true
+                           );
+
+            return await SendAndVerify(
+                             request,
+                             CancellationToken
+                         ).ConfigureAwait(false);
+
         }
 
+        #endregion
 
 
-
-
+        #region SendAndVerify      (TimeStampRequest, CancellationToken)
 
         /// <summary>
         /// Low-Level-Methode: Benutzerdefinierter Request + vollständiges Ergebnis.
         /// </summary>
-        public async Task<TimeStampResult> SendAndVerify(
-            TimeStampRequest request,
-            CancellationToken cancellationToken = default)
+        public async Task<TimeStampResult>
+
+            SendAndVerify(TimeStampRequest   TimeStampRequest,
+                          CancellationToken  CancellationToken   = default)
+
         {
-            ArgumentNullException.ThrowIfNull(request);
 
-            byte[] requestBytes = request.Encode();
+            using var content            = new ByteArrayContent(TimeStampRequest.Encode());
+            content.Headers.ContentType  = new MediaTypeHeaderValue("application/timestamp-query");
 
-            using var content = new ByteArrayContent(requestBytes);
-            content.Headers.ContentType = new MediaTypeHeaderValue("application/timestamp-query");
-
-            var httpResponse = await _httpClient.PostAsync(_tsaUrl, content, cancellationToken)
-                                                .ConfigureAwait(false);
+            var httpResponse             = await httpClient.PostAsync(
+                                                      RemoteURL,
+                                                      content,
+                                                      CancellationToken
+                                                  ).ConfigureAwait(false);
 
             httpResponse.EnsureSuccessStatusCode();
 
-            byte[] responseBytes = await httpResponse.Content.ReadAsByteArrayAsync(cancellationToken)
-                                                             .ConfigureAwait(false);
+            var responseBytes            = await httpResponse.Content.
+                                                     ReadAsByteArrayAsync(CancellationToken).
+                                                     ConfigureAwait(false);
 
-            var tsResponse = TimeStampResponse.Decode(responseBytes);
+            var timeStampResponse        = TimeStampResponse.Decode(responseBytes);
 
-            // Vollständige Verifikation (RSA + ECDSA)
-            var tstInfo = tsResponse.Verify(_trustedTsaCertificate);
-            ValidateResponseMatchesRequest(request, tstInfo);
+            var tstInfo                  = timeStampResponse.Verify(TrustedTSACertificate);
 
-            // Signer-Zertifikat aus dem CMS-Token extrahieren
-            var signedCms = new SignedCms();
-            signedCms.Decode(tsResponse.TimeStampToken!);
-            var signerCert = signedCms.SignerInfos[0].Certificate
-                             ?? throw new InvalidDataException("Kein Signer-Zertifikat im Token gefunden.");
-
-            return new TimeStampResult(tstInfo, tsResponse, request, signerCert);
-        }
-
-
-
-
-
-        private static void ValidateResponseMatchesRequest(TimeStampRequest request, TSTInfo tstInfo)
-        {
-            if (tstInfo.MessageImprint.HashAlgorithm.Algorithm != request.MessageImprint.HashAlgorithm.Algorithm ||
-                !tstInfo.MessageImprint.HashedMessage.SequenceEqual(request.MessageImprint.HashedMessage))
+            if (tstInfo.MessageImprint.HashAlgorithm.Algorithm != TimeStampRequest.MessageImprint.HashAlgorithm.Algorithm ||
+               !tstInfo.MessageImprint.HashedMessage.SequenceEqual(TimeStampRequest.MessageImprint.HashedMessage))
             {
-                throw new InvalidDataException("TimeStampResponse passt nicht zum MessageImprint der Anfrage.");
+                throw new InvalidDataException("TimeStampResponse does not match the MessageImprint of the request.");
             }
 
-            if (request.Nonce != tstInfo.Nonce)
-                throw new InvalidDataException("TimeStampResponse passt nicht zur Nonce der Anfrage.");
+            if (TimeStampRequest.Nonce != tstInfo.Nonce)
+                throw new InvalidDataException("TimeStampResponse does not match the Nonce of the request.");
 
-            if (request.ReqPolicy is not null && request.ReqPolicy != tstInfo.Policy)
-                throw new InvalidDataException("TimeStampResponse passt nicht zur angefragten Policy.");
+            if (TimeStampRequest.ReqPolicy is not null && TimeStampRequest.ReqPolicy != tstInfo.Policy)
+                throw new InvalidDataException("TimeStampResponse does not match the requested policy.");
+
+
+            var signedCms                = new SignedCms();
+            signedCms.Decode(timeStampResponse.TimeStampToken!);
+
+            var signerCert               = signedCms.SignerInfos[0].Certificate
+                                               ?? throw new InvalidDataException("No signer certificate found in TimeStampToken!");
+
+            return new TimeStampResult(
+                       tstInfo,
+                       timeStampResponse,
+                       TimeStampRequest,
+                       signerCert
+                   );
 
         }
 
+        #endregion
 
-        private static async Task<Byte[]> ComputeHash(
-            Stream data,
-            AlgorithmIdentifier hashAlgorithm,
-            Int32 bufferSize,
-            CancellationToken cancellationToken)
+
+
+        #region (private) ComputeHash(Stream, HashAlgorithm, BufferSize, CancellationToken)
+
+        private static async Task<Byte[]>
+
+            ComputeHash(Stream               Stream,
+                        AlgorithmIdentifier  HashAlgorithm,
+                        Int32                BufferSize,
+                        CancellationToken    CancellationToken)
+
         {
-            using var hash = IncrementalHash.CreateHash(GetHashAlgorithmName(hashAlgorithm));
-            var buffer = ArrayPool<Byte>.Shared.Rent(bufferSize);
+
+            using var hash    = IncrementalHash.CreateHash(
+                                    GetHashAlgorithmName(HashAlgorithm)
+                                );
+
+                  var buffer  = ArrayPool<Byte>.Shared.Rent(
+                                    BufferSize
+                                );
 
             try
             {
                 while (true)
                 {
-                    var read = await data.ReadAsync(buffer.AsMemory(0, bufferSize), cancellationToken)
-                                         .ConfigureAwait(false);
+
+                    var read = await Stream.ReadAsync(
+                                         buffer.AsMemory(0, BufferSize),
+                                         CancellationToken
+                                     ).ConfigureAwait(false);
 
                     if (read == 0)
                         return hash.GetHashAndReset();
 
                     hash.AppendData(buffer, 0, read);
+
                 }
             }
             finally
             {
                 ArrayPool<Byte>.Shared.Return(buffer);
             }
+
         }
 
+        #endregion
 
-        private static HashAlgorithmName GetHashAlgorithmName(AlgorithmIdentifier hashAlgorithm)
+        #region (private) GetHashAlgorithmName(HashAlgorithm)
 
-            => hashAlgorithm.Algorithm switch {
+        private static HashAlgorithmName GetHashAlgorithmName(AlgorithmIdentifier HashAlgorithm)
+
+            => HashAlgorithm.Algorithm switch {
                    OIDMap.Sha256  => HashAlgorithmName.SHA256,
                    OIDMap.Sha384  => HashAlgorithmName.SHA384,
                    OIDMap.Sha512  => HashAlgorithmName.SHA512,
-                   _              => throw new NotSupportedException($"Hash algorithm {hashAlgorithm.Algorithm} is not supported!")
+                   _              => throw new NotSupportedException($"Hash algorithm {HashAlgorithm.Algorithm} is not supported!")
                };
 
+        #endregion
+
+
+        #region Dispose()
 
         public void Dispose()
         {
 
-            if (_disposed)
+            if (disposed)
                 return;
 
-            if (_ownsHttpClient)
-                _httpClient.Dispose();
+            if (ownsHTTPClient)
+                httpClient.Dispose();
 
-            _trustedTsaCertificate.Dispose();
+            TrustedTSACertificate.Dispose();
 
-            _disposed = true;
+            disposed = true;
 
         }
+
+        #endregion
 
     }
 

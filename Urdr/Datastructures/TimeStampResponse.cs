@@ -30,7 +30,7 @@ namespace org.GraphDefined.Vanaheimr.Urdr
 {
 
     /// <summary>
-    /// A TimeStampResponse (RFC 3161 §2.4.2) is sent by a TimeStamp Authority (TSA)
+    /// A TimeStampResponse (RFC 3161 §2.4.2) is sent by a Time Stamp Authority (TSA)
     /// in response to a TimeStampRequest.
     /// 
     ///  TimeStampResp ::= SEQUENCE {

@@ -28,7 +28,7 @@ using org.GraphDefined.Vanaheimr.Urdr.Tests;
 
 #endregion
 
-namespace org.GraphDefined.Vanaheimr.org.GraphDefined.Vanaheimr.Urdr.Tests;
+namespace org.GraphDefined.Vanaheimr.Urdr.Tests;
 
 [TestFixture]
 public sealed class OpenSslInteropTests

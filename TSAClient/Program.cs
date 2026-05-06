@@ -33,16 +33,28 @@ namespace org.GraphDefined.Vanaheimr.Urdr.Client
         private static async Task<Int32> Stamp(Dictionary<String, String> opts)
         {
 
-            var url                       = opts.GetValueOrDefault("url",  TSAClient.DefaultTsaUrl);
+            var url                       = opts.GetValueOrDefault("url",  "");
+            if (String.IsNullOrWhiteSpace(url))
+                return 0;
+
             var certPath                  = opts.GetValueOrDefault("cert", DefaultCertPath);
             var password                  = opts.GetValueOrDefault("password");
+
+            using var trustedCertificate  = LoadTrustedCertificate(
+                                                certPath,
+                                                password
+                                            );
+
+            using var client              = new TSAClient(
+                                                url,
+                                                trustedCertificate
+                                            );
+
             var inputPath                 = opts.GetValueOrDefault("in");
             var outputPath                = opts.GetValueOrDefault("out");
             var policy                    = opts.GetValueOrDefault("policy");
             var hashAlgorithm             = ParseHashAlgorithm(opts.GetValueOrDefault("hash", "sha256"));
 
-            using var trustedCertificate  = LoadTrustedCertificate(certPath, password);
-            using var client              = new TSAClient(url, trustedCertificate);
 
             TimeStampResult result;
 
@@ -132,14 +144,13 @@ namespace org.GraphDefined.Vanaheimr.Urdr.Client
 
                 Usage:
                   dotnet run --project TSAClient -- [stamp]
-                      [--url http://localhost:8080/]
+                       --url http://localhost:8080
                       [--cert tsa.pfx] [--password secret]
                       [--in file.bin] [--out response.tsr]
                       [--hash sha256|sha384|sha512]
                       [--policy oid]
 
                 Defaults:
-                  --url   {TSAClient.DefaultTsaUrl}
                   --cert  {DefaultCertPath}
                   --hash  sha256
 

@@ -8,6 +8,6 @@
     <RootNamespace>org.GraphDefined.Vanaheimr.Urdr</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.7" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.11" />
   </ItemGroup>
 </Project>

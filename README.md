@@ -1,5 +1,8 @@
 # Time-Stamp Protocol / Time Stamp Authority (RFC 3161)
 
+[![CI](https://github.com/Vanaheimr/Urdr/actions/workflows/ci.yml/badge.svg)](https://github.com/Vanaheimr/Urdr/actions/workflows/ci.yml)
+[![Nightly](https://github.com/Vanaheimr/Urdr/actions/workflows/nightly.yml/badge.svg)](https://github.com/Vanaheimr/Urdr/actions/workflows/nightly.yml)
+
 This project implements the *Time-Stamp Protocol* and a *Time Stamping Authority* in C# .NET 10.
 RSA + ECDSA (P-256/P-384/P-521) + SHA-256/384/512 can be used for signing.
 

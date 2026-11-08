@@ -18,11 +18,13 @@
 #region Usings
 
 using System.Buffers;
-using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 
+using org.GraphDefined.Vanaheimr.Hermod;
+using org.GraphDefined.Vanaheimr.Hermod.DNS;
+using org.GraphDefined.Vanaheimr.Hermod.HTTP;
 using org.GraphDefined.Vanaheimr.Urdr.Asn1;
 
 #endregion
@@ -34,16 +36,31 @@ namespace org.GraphDefined.Vanaheimr.Urdr
     /// The TSAClient requests and verifies timestamps from a Time Stamp Authority (TSA)
     /// using the Time-Stamp Protocol (TSP, RFC 3161).
     /// </summary>
+    /// <remarks>
+    /// The requests go through Hermod's HTTP client, which resolves the TSA's host name with
+    /// the DNS client it is given - never with the resolver of the operating system, as the
+    /// runtime's HttpClient did: an application that resolves its names securely, with name
+    /// servers of its own, DNS over TLS or HTTPS and DNSSEC, must not be dialled around them.
+    /// Without a DNS client, Hermod's client makes one of its own, which asks the name servers
+    /// of the network configuration itself.
+    /// </remarks>
     public class TSAClient : IDisposable
     {
 
         #region Data
 
-        private readonly  HttpClient        httpClient;
-        private readonly  Boolean           ownsHTTPClient;
+        private readonly  HTTPClient        httpClient;
+        private readonly  URL               remoteURL;
         private           Boolean           disposed;
 
         public const      String            DefaultHTTPUserAgent  = "Vanaheimr Urdr-Client/1.0";
+
+        /// <summary>
+        /// The media type of a time-stamp request (RFC 3161 §3.4).
+        /// </summary>
+        public static readonly HTTPContentType  TimeStampQuery  = HTTPContentType.TryParse("application/timestamp-query", out var contentType)
+                                                                      ? contentType
+                                                                      : throw new InvalidOperationException("application/timestamp-query is no media type?");
 
         #endregion
 
@@ -64,6 +81,11 @@ namespace org.GraphDefined.Vanaheimr.Urdr
         /// </summary>
         public String            HTTPUserAgent            { get; }
 
+        /// <summary>
+        /// The DNS client the TSA's host name is resolved with.
+        /// </summary>
+        public IDNSClient?       DNSClient                { get; }
+
         #endregion
 
         #region Constructor(s)
@@ -71,49 +93,31 @@ namespace org.GraphDefined.Vanaheimr.Urdr
         /// <summary>
         /// Create a new Time Stamp Authority client.
         /// </summary>
-        /// <param name="RemoteURL">The URL of the Time Stamp Authority service endpoint.</param>
+        /// <param name="RemoteURL">The URL of the Time Stamp Authority service endpoint (http:// or https://).</param>
         /// <param name="TrustedTSACertificate">The trusted certificate of the Time Stamp Authority for verifying responses.</param>
+        /// <param name="DNSClient">The DNS client the TSA's host name is resolved with. Null makes Hermod's HTTP client use one of its own; the resolver of the operating system is never asked.</param>
+        /// <param name="RemoteCertificateValidator">An optional validator of the TLS certificate of an https:// TSA; by default the system's chain validation.</param>
         /// <param name="HTTPUserAgent">An optional HTTP User-Agent.</param>
-        public TSAClient(String            RemoteURL,
-                         X509Certificate2  TrustedTSACertificate,
-                         String            HTTPUserAgent = DefaultHTTPUserAgent)
+        public TSAClient(String                                                     RemoteURL,
+                         X509Certificate2                                           TrustedTSACertificate,
+                         IDNSClient?                                                DNSClient,
+                         RemoteTLSServerCertificateValidationHandler<IHTTPClient>?  RemoteCertificateValidator   = null,
+                         String                                                     HTTPUserAgent                = DefaultHTTPUserAgent)
         {
 
             this.RemoteURL              = RemoteURL;
             this.TrustedTSACertificate  = TrustedTSACertificate;
             this.HTTPUserAgent          = HTTPUserAgent;
+            this.DNSClient              = DNSClient;
 
-            this.httpClient             = new HttpClient();
-            this.ownsHTTPClient         = true;
+            this.remoteURL              = URL.TryParse(RemoteURL) ?? throw new ArgumentException($"'{RemoteURL}' is not a URL.", nameof(RemoteURL));
 
-            this.httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(this.HTTPUserAgent);
-
-        }
-
-
-        /// <summary>
-        /// Create a new TSAClient with a custom HttpClient.
-        /// The caller is responsible for disposing the HttpClient!
-        /// </summary>
-        /// <param name="HTTPClient">The HttpClient to use for sending requests. The TSAClient will not dispose it.</param>
-        /// <param name="RemoteURL">The URL of the Time Stamp Authority service endpoint.</param>
-        /// <param name="TrustedTSACertificate">The trusted certificate of the Time Stamp Authority for verifying responses.</param>
-        /// <param name="HTTPUserAgent">An optional HTTP User-Agent.</param>
-        public TSAClient(HttpClient        HTTPClient,
-                         String            RemoteURL,
-                         X509Certificate2  TrustedTSACertificate,
-                         String            HTTPUserAgent = DefaultHTTPUserAgent)
-        {
-
-            this.RemoteURL              = RemoteURL;
-            this.TrustedTSACertificate  = TrustedTSACertificate;
-            this.HTTPUserAgent          = HTTPUserAgent;
-
-            this.httpClient             = HTTPClient;
-            this.ownsHTTPClient         = false;
-
-            if (this.httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
-                this.httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(this.HTTPUserAgent);
+            this.httpClient             = new HTTPClient(
+                                              this.remoteURL,
+                                              HTTPUserAgent:               HTTPUserAgent,
+                                              RemoteCertificateValidator:  RemoteCertificateValidator,
+                                              DNSClient:                   DNSClient
+                                          );
 
         }
 
@@ -251,20 +255,18 @@ namespace org.GraphDefined.Vanaheimr.Urdr
 
         {
 
-            using var content            = new ByteArrayContent(TimeStampRequest.Encode());
-            content.Headers.ContentType  = new MediaTypeHeaderValue("application/timestamp-query");
+            var httpResponse             = await httpClient.POST(
+                                                     remoteURL.Path,
+                                                     TimeStampRequest.Encode(),
+                                                     TimeStampQuery,
+                                                     QueryString:        remoteURL.QueryString,
+                                                     CancellationToken:  CancellationToken
+                                                 ).ConfigureAwait(false);
 
-            var httpResponse             = await httpClient.PostAsync(
-                                                      RemoteURL,
-                                                      content,
-                                                      CancellationToken
-                                                  ).ConfigureAwait(false);
+            if (httpResponse.HTTPStatusCode.Code is < 200 or > 299)
+                throw new HttpRequestException($"The Time Stamp Authority answered {httpResponse.HTTPStatusCode}.");
 
-            httpResponse.EnsureSuccessStatusCode();
-
-            var responseBytes            = await httpResponse.Content.
-                                                     ReadAsByteArrayAsync(CancellationToken).
-                                                     ConfigureAwait(false);
+            var responseBytes            = httpResponse.HTTPBody ?? [];
 
             var timeStampResponse        = TimeStampResponse.Decode(responseBytes);
 
@@ -369,8 +371,7 @@ namespace org.GraphDefined.Vanaheimr.Urdr
             if (disposed)
                 return;
 
-            if (ownsHTTPClient)
-                httpClient.Dispose();
+            httpClient.Dispose();
 
             TrustedTSACertificate.Dispose();
 

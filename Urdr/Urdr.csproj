@@ -10,4 +10,9 @@
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Hermod's HTTP client, which resolves the TSA's host name with the DNS client it is given:
+         the runtime's HttpClient would ask the resolver of the operating system. -->
+    <ProjectReference Include="..\..\Hermod\Hermod\Hermod.csproj" />
+  </ItemGroup>
 </Project>

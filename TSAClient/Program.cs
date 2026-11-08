@@ -20,6 +20,8 @@
 using System.Globalization;
 using System.Security.Cryptography.X509Certificates;
 
+using org.GraphDefined.Vanaheimr.Hermod.DNS;
+
 #endregion
 
 namespace org.GraphDefined.Vanaheimr.Urdr.Client
@@ -45,9 +47,14 @@ namespace org.GraphDefined.Vanaheimr.Urdr.Client
                                                 password
                                             );
 
+            // The TSA's name is resolved by Hermod's DNS client, which asks the name servers of this
+            // machine's network configuration itself - never by the resolver of the operating system.
+            using var dnsClient           = new DNSClient();
+
             using var client              = new TSAClient(
                                                 url,
-                                                trustedCertificate
+                                                trustedCertificate,
+                                                dnsClient
                                             );
 
             var inputPath                 = opts.GetValueOrDefault("in");

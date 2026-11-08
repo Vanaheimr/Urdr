@@ -29,6 +29,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          path: Urdr
+
+      # Urdr cannot be built on its own any more: its TSA client uses Hermod's HTTP client, so
+      # that the TSA's host name is resolved with a DNS client and not by the operating system,
+      # and Urdr.csproj references ..\..\Hermod\... - a SIBLING directory, which references
+      # Styx the same way. Both are checked out alongside, as ChargyCore.NET does; neither is
+      # pinned, so a breaking change on their master turns this red.
+      - uses: actions/checkout@v7
+        with:
+          repository: Vanaheimr/Styx
+          path: Styx
+
+      - uses: actions/checkout@v7
+        with:
+          repository: Vanaheimr/Hermod
+          path: Hermod
 
       - name: Install .NET and test prerequisites (Debian container)
         if: runner.os == 'Linux'
@@ -42,9 +59,11 @@ jobs:
         run: openssl version
 
       - name: Build
+        working-directory: Urdr
         run: dotnet build Urdr.slnx --configuration Release
 
       - name: Test full suite
+        working-directory: Urdr
         timeout-minutes: 60
         run: dotnet test UrdrTests/UrdrTests.csproj --configuration Release --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=${{ matrix.leg }}.trx" --results-directory artifacts
 
@@ -53,5 +72,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.leg }}
-          path: artifacts/*.trx
+          path: Urdr/artifacts/*.trx
 

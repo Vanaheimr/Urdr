@@ -309,6 +309,9 @@ public sealed class TSAClientTests
         public ValueTask DisposeAsync()
             => ValueTask.CompletedTask;
 
+        public override String ToString()
+            => nameof(LoopbackDNS);
+
     }
 
     #endregion

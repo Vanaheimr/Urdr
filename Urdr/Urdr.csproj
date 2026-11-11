@@ -8,7 +8,7 @@
     <RootNamespace>org.GraphDefined.Vanaheimr.Urdr</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="11.0.0" />
   </ItemGroup>
   <ItemGroup>
     <!-- Hermod's HTTP client, which resolves the TSA's host name with the DNS client it is given:

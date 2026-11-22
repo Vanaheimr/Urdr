@@ -22,7 +22,7 @@ public static class TSAServer
     private const int MaxTimestampRequestBytes = 16 * 1024;
 
     public static async Task RunAsync(
-        int port,
+        IPPort port,
         string pfxPath,
         string? pfxPassword,
         string? defaultPolicyOid = null,

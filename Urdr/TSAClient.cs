@@ -40,7 +40,7 @@ namespace org.GraphDefined.Vanaheimr.Urdr
     /// The requests go through Hermod's HTTP client, which resolves the TSA's host name with
     /// the DNS client it is given - never with the resolver of the operating system, as the
     /// runtime's HttpClient did: an application that resolves its names securely, with name
-    /// servers of its own, DNS over TLS or HTTPS and DNSSEC, must not be dialled around them.
+    /// servers of its own, DNS over TLS or HTTPS and DNSSEC, must not be connected around them.
     /// Without a DNS client, Hermod's client makes one of its own, which asks the name servers
     /// of the network configuration itself.
     /// </remarks>

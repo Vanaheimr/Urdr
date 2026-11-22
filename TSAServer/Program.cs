@@ -32,7 +32,7 @@ namespace org.GraphDefined.Vanaheimr.Urdr.Server
 
         private static async Task<int> Serve(Dictionary<string, string> o)
         {
-            int port = o.TryGetValue("port", out var p) ? int.Parse(p, CultureInfo.InvariantCulture) : 8080;
+            var port = o.TryGetValue("port", out var p) ? IPPort.Parse(p) : IPPort.Parse(8080);
             string pfx = o.GetValueOrDefault("pfx", "tsa.pfx");
             string? pwd = o.GetValueOrDefault("password");
             var includeAccuracy = !o.ContainsKey("no-accuracy");

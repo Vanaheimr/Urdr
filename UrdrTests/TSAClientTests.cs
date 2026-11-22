@@ -163,7 +163,7 @@ public sealed class TSAClientTests
         private readonly CancellationTokenSource  stopping = new ();
         private readonly List<String>             requests = [];
 
-        public UInt16 Port { get; }
+        public IPPort Port { get; }
 
         /// <summary>
         /// The request lines and headers that came in.
@@ -181,7 +181,7 @@ public sealed class TSAClientTests
         {
 
             listener.Start();
-            Port = (UInt16) ((System.Net.IPEndPoint) listener.LocalEndpoint).Port;
+            Port = IPPort.Parse(((System.Net.IPEndPoint) listener.LocalEndpoint).Port);
 
             _ = Task.Run(async () => {
                     while (!stopping.IsCancellationRequested)

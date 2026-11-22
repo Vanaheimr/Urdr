@@ -9,6 +9,7 @@
 //            Body: DER-encoded TimeStampResp
 // ---------------------------------------------------------------------------
 
+using org.GraphDefined.Vanaheimr.Hermod;
 using org.GraphDefined.Vanaheimr.Urdr;
 using org.GraphDefined.Vanaheimr.Urdr.Asn1;
 
@@ -42,7 +43,7 @@ public static class TSAServer
             ordering: ordering);
 
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.ConfigureKestrel(o => o.ListenAnyIP(port));
+        builder.WebHost.ConfigureKestrel(o => o.ListenAnyIP(port.ToInt32()));
         builder.Services.AddSingleton(tsa);
 
         var app = builder.Build();
